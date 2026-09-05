@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3347">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>Family Premier League Predictor</title>
+<style>
+:root{
+  --bg:#f3f5f7; --card:#ffffff; --text:#16191d; --muted:#6f7782; --line:#dde2e7;
+  --accent:#1f3347; --accent-soft:#e8edf2; --good:#24734b; --bad:#a14949; --warn:#8a671f;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+button,select,input{font:inherit}
+button{cursor:pointer}
+.app{max-width:760px;margin:auto;padding:12px 12px calc(20px + env(safe-area-inset-bottom))}
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:6px 2px 12px}
+h1{font-size:1.35rem;line-height:1.2;margin:0 0 3px}
+.sub{font-size:.84rem;color:var(--muted)}
+.iconbtn,.btn{min-height:44px;border:1px solid var(--line);background:#fff;border-radius:11px;padding:9px 12px;font-weight:700;color:var(--text)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px;margin-bottom:11px}
+.controls{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.controls select{flex:1;min-width:150px}
+select,input{min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;color:var(--text)}
+.status{font-size:.82rem;color:var(--muted);margin-top:8px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--accent-soft);padding:4px;border-radius:12px;margin-bottom:11px}
+.tab{min-height:42px;border:0;border-radius:9px;background:transparent;font-weight:750;color:var(--muted)}
+.tab.active{background:#fff;color:var(--text)}
+.scoregrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.score{background:var(--accent-soft);border-radius:12px;padding:10px 8px}
+.score .name{font-size:.75rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score .pts{font-size:1.45rem;font-weight:850;margin-top:2px}
+.match{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px;margin-bottom:10px}
+.matchhead{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+.team{text-align:center;min-width:0}
+.team img{width:42px;height:42px;object-fit:contain;display:block;margin:0 auto 5px}
+.team .fallback{width:42px;height:42px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center;margin:0 auto 5px;font-size:.76rem;font-weight:800;color:var(--accent)}
+.teamname{font-size:.9rem;font-weight:780;line-height:1.15}
+.center{text-align:center}
+.scoreline{font-weight:850;font-size:1.1rem}
+.kick{font-size:.74rem;color:var(--muted);margin-top:2px}
+.locked{font-size:.72rem;color:var(--warn);font-weight:750;margin-top:3px}
+.matchstatus{display:inline-block;margin-top:4px;padding:3px 7px;border-radius:999px;font-size:.68rem;font-weight:800}
+.matchstatus.upcoming{background:var(--accent-soft);color:var(--accent)}
+.matchstatus.completed{background:#e8f2ec;color:var(--good)}
+.matchstatus.live{background:#f6ecec;color:var(--bad)}
+.predgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px}
+.person{text-align:center;min-width:0}
+.personname{font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px}
+.picks{display:grid;grid-template-columns:1fr;gap:4px}
+.pick{min-height:42px;border:1px solid var(--line);background:#fff;border-radius:9px;font-weight:750;padding:5px 6px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:.76rem;line-height:1.05}
+.pick img{width:20px;height:20px;object-fit:contain;flex:0 0 auto}
+.pick .mini{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);font-size:.58rem;font-weight:850;flex:0 0 auto}
+.pick .label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:92px}
+.pick.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.pick.correct{outline:2px solid var(--good);outline-offset:1px}
+.pick.wrong{opacity:.45}
+.pick:disabled{cursor:not-allowed;opacity:.55}
+.empty{padding:26px 8px;text-align:center;color:var(--muted)}
+.playeredit{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:9px}
+.hidden{display:none!important}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.74rem;color:var(--muted);margin-top:8px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:var(--good)}
+.footer{font-size:.73rem;color:var(--muted);padding:4px 2px 8px;line-height:1.4}
+.installtip{font-size:.78rem;background:var(--accent-soft);border-radius:10px;padding:9px 10px;margin-top:8px;color:var(--text)}
+@media(max-width:520px){
+ .app{padding-left:9px;padding-right:9px}
+ .scoregrid{grid-template-columns:repeat(2,1fr)}
+ .predgrid{grid-template-columns:repeat(2,1fr)}
+ .team img,.team .fallback{width:36px;height:36px}
+ .teamname{font-size:.82rem}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div>
+      <h1>Family Premier League Predictor</h1>
+      <div class="sub">Pick the team or Draw · 1 point per correct result · UAE kick-off times</div>
+    </div>
+    <button id="refresh" class="iconbtn" aria-label="Refresh fixtures and results">↻</button>
+  </div>
+
+  <div class="tabs" style="grid-template-columns:repeat(3,1fr)">
+    <button class="tab active" data-tab="thisweek">This Week</button>
+    <button class="tab" data-tab="week">Gameweek</button>
+    <button class="tab" data-tab="season">Season</button>
+  </div>
+
+  <section id="thisWeekView">
+    <div class="panel">
+      <strong>This Week</strong>
+      <div class="sub" style="margin-top:3px">All Premier League fixtures for the current gameweek, ordered by UAE kick-off time.</div>
+      <div id="thisWeekSummary" class="status" style="margin-top:8px"></div>
+    </div>
+    <div id="thisWeekMatches"></div>
+  </section>
+
+  <section id="weekView" class="hidden">
+    <div class="panel">
+      <div class="controls">
+        <button id="prev" class="btn" aria-label="Previous gameweek">◀</button>
+        <select id="round" aria-label="Gameweek"></select>
+        <button id="next" class="btn" aria-label="Next gameweek">▶</button>
+        <button id="editPlayers" class="btn">Names</button>
+      </div>
+      <div id="playerEditor" class="playeredit hidden"></div>
+      <div id="status" class="status">Loading Premier League fixtures…</div>
+      <div class="installtip">Phone tip: open this page in Chrome, tap the browser menu, then choose <strong>Add to Home screen</strong> for app-like access.</div>
+    </div>
+
+    <div class="panel">
+      <strong>Gameweek leaderboard</strong>
+      <div id="weekBoard" class="scoregrid" style="margin-top:9px"></div>
+    </div>
+
+    <div id="matches"></div>
+  </section>
+
+  <section id="seasonView" class="hidden">
+    <div class="panel">
+      <strong>Season leaderboard</strong>
+      <div class="sub" style="margin-top:3px">Calculated automatically from every completed Premier League match.</div>
+      <div id="seasonBoard" class="scoregrid" style="margin-top:10px"></div>
+      <div class="legend"><span><i class="dot"></i>No manual gameweek totals required</span></div>
+    </div>
+    <div class="panel">
+      <strong>How it works</strong>
+      <div class="sub" style="margin-top:6px;line-height:1.5">Predictions normally lock at kick-off. For setup purposes, any match played today remains editable even if it has already finished. Older matches stay locked. As results arrive, correct picks score one point and both the gameweek and season tables update.</div>
+    </div>
+  </section>
+
+  <div class="footer">Results and club badges use TheSportsDB; missing upcoming fixtures are supplemented from Sporting Events so the complete weekend is shown. All kick-off times are converted from UTC to UAE local time (Asia/Dubai, UTC+4). Predictions and family names stay in this browser on this device.</div>
+</div>
+
+<script>
+const LEAGUE_ID='4328';
+const SEASON='2026-2027';
+const API=`https://www.thesportsdb.com/api/v1/json/123/eventsseason.php?id=${LEAGUE_ID}&s=${SEASON}`;
+const FIXTURE_API='https://sporting-events.org/data/premier-league.json';
+let players=JSON.parse(localStorage.getItem('fpp_players')||'["Eoghan","Zeinab","Hannah","Senan"]');
+let picks=JSON.parse(localStorage.getItem('fpp_picks')||'{}');
+let events=[],rounds=[],currentRound='';
+const $=s=>document.querySelector(s);
+
+function save(){localStorage.setItem('fpp_players',JSON.stringify(players));localStorage.setItem('fpp_picks',JSON.stringify(picks))}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function roundNum(e){const n=parseInt(e.intRound??e.strRound??'',10);return Number.isFinite(n)?n:null}
+function resultOf(e){
+  if(e.intHomeScore===null||e.intHomeScore===''||e.intAwayScore===null||e.intAwayScore==='') return '';
+  const h=Number(e.intHomeScore),a=Number(e.intAwayScore);
+  return h>a?'H':h<a?'A':'D'
+}
+function startTime(e){
+  if(e.strTimestamp){
+    let ts=e.strTimestamp;
+    if(!/[zZ]|[+-]\d\d:\d\d$/.test(ts)) ts += 'Z';
+    const d=new Date(ts); if(!isNaN(d))return d
+  }
+  if(e.dateEvent){
+    const raw=`${e.dateEvent}T${e.strTime||'00:00:00'}Z`;
+    const d=new Date(raw); if(!isNaN(d))return d
+  }
+  return null
+}
+function uaeDateKey(d){
+  if(!d)return '';
+  const parts=new Intl.DateTimeFormat('en-CA',{
+    timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(d);
+  const get=t=>parts.find(p=>p.type===t)?.value||'';
+  return `${get('year')}-${get('month')}-${get('day')}`
+}
+function sameLocalDay(a,b){
+  return !!(a&&b&&uaeDateKey(a)===uaeDateKey(b))
+}
+function locked(e){
+  const t=startTime(e);
+  if(!t) return false;
+  const now=new Date();
+  // Catch-up exception: today's matches can still be entered after kick-off/full-time.
+  if(sameLocalDay(t,now)) return false;
+  return Date.now()>=t.getTime()
+}
+function eventDate(e){
+  const d=startTime(e); if(!d)return e.dateEvent||'';
+  return new Intl.DateTimeFormat('en-GB',{
+    timeZone:'Asia/Dubai',weekday:'short',day:'numeric',month:'short',
+    hour:'2-digit',minute:'2-digit',hour12:true
+  }).format(d) + ' UAE'
+}
+function badge(e,home){
+  const src=home?(e.strHomeTeamBadge||e.strHomeTeamLogo):(e.strAwayTeamBadge||e.strAwayTeamLogo);
+  const name=home?e.strHomeTeam:e.strAwayTeam;
+  if(src)return `<img src="${esc(src)}" alt="${esc(name)} badge" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><span class="fallback" style="display:none">${esc((name||'?').slice(0,3).toUpperCase())}</span>`;
+  return `<span class="fallback">${esc((name||'?').slice(0,3).toUpperCase())}</span>`
+}
+function scoreEvents(es){
+  return players.map((_,pi)=>es.reduce((s,e)=>s+(resultOf(e)&&picks[e.idEvent]?.[pi]===resultOf(e)?1:0),0))
+}
+function ranking(scores){
+  return players.map((name,i)=>({name,score:scores[i],i})).sort((a,b)=>b.score-a.score||a.i-b.i)
+}
+function renderBoard(el,scores){
+  el.innerHTML=ranking(scores).map((p,i)=>`<div class="score"><div class="name">${i+1}. ${esc(p.name)}</div><div class="pts">${p.score}</div></div>`).join('')
+}
+function renderWeekBoard(){
+  const es=events.filter(e=>String(roundNum(e))===String(currentRound));
+  renderBoard($('#weekBoard'),scoreEvents(es))
+}
+function renderSeasonBoard(){
+  const completed=events.filter(e=>resultOf(e));
+  renderBoard($('#seasonBoard'),scoreEvents(completed))
+}
+function pickChoiceContent(e,code){
+  if(code==='D') return `<span class="mini">D</span><span class="label">Draw</span>`;
+  const home=code==='H';
+  const name=home?e.strHomeTeam:e.strAwayTeam;
+  const src=home?(e.strHomeTeamBadge||e.strHomeTeamLogo):(e.strAwayTeamBadge||e.strAwayTeamLogo);
+  const initials=(name||'?').slice(0,3).toUpperCase();
+  const icon=src
+    ? `<img src="${esc(src)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-grid'"><span class="mini" style="display:none">${esc(initials)}</span>`
+    : `<span class="mini">${esc(initials)}</span>`;
+  return `${icon}<span class="label">${esc(name)}</span>`
+}
+function pickButton(e,pi,code){
+  const active=picks[e.idEvent]?.[pi]===code, actual=resultOf(e), isLocked=locked(e);
+  let cls='pick'+(active?' active':'');
+  if(actual&&active)cls+=code===actual?' correct':' wrong';
+  const readable=code==='D'?'Draw':(code==='H'?e.strHomeTeam:e.strAwayTeam);
+  return `<button class="${cls}" data-pick="${e.idEvent}|${pi}|${code}" ${isLocked?'disabled':''} aria-label="${esc(players[pi])}: ${esc(readable)}" aria-pressed="${active}">${pickChoiceContent(e,code)}</button>`
+}
+
+function currentThisWeekRound(){
+  const now = Date.now();
+
+  // Pick the gameweek whose overall fixture window contains "now".
+  // This keeps Sat/Sun/Mon fixtures together even after Saturday games finish.
+  for (const r of rounds) {
+    const es = events.filter(e => roundNum(e) === r && startTime(e));
+    if (!es.length) continue;
+
+    const times = es.map(e => startTime(e).getTime()).sort((a,b)=>a-b);
+    const first = times[0];
+    const last = times[times.length - 1];
+
+    // Treat a gameweek as active from 12 hours before first KO
+    // until 18 hours after the final scheduled KO.
+    if (now >= first - 12*60*60*1000 && now <= last + 18*60*60*1000) {
+      return r;
+    }
+  }
+
+  // Otherwise choose the next gameweek with any upcoming fixture.
+  const nextRound = rounds.find(r => events.some(e => {
+    const t = startTime(e);
+    return roundNum(e) === r && t && t.getTime() > now;
+  }));
+  if (nextRound) return nextRound;
+
+  // Fallback to the latest round with any completed result.
+  const latestCompleted = [...rounds].reverse().find(r =>
+    events.some(e => roundNum(e) === r && resultOf(e))
+  );
+
+  return latestCompleted ?? rounds[0] ?? '';
+}
+function matchStatus(e){
+  const r=resultOf(e), t=startTime(e), now=Date.now();
+  if(r) return {label:'Completed',cls:'completed'};
+  if(t && now >= t.getTime() && now < t.getTime()+3*60*60*1000) return {label:'Live',cls:'live'};
+  return {label:'Upcoming',cls:'upcoming'};
+}
+function matchCard(e){
+  const r=resultOf(e), isLocked=locked(e), st=matchStatus(e);
+  return `<article class="match">
+      <div class="matchhead">
+        <div class="team">${badge(e,true)}<div class="teamname">${esc(e.strHomeTeam)}</div></div>
+        <div class="center">
+          <div class="scoreline">${r?`${e.intHomeScore}–${e.intAwayScore}`:'v'}</div>
+          <div class="kick">${esc(eventDate(e))}</div>
+          <span class="matchstatus ${st.cls}">${st.label}</span>
+          ${isLocked?'<div class="locked">Picks locked</div>':(locked(e)===false && startTime(e) && Date.now()>=startTime(e).getTime()?'<div class="locked">Today: catch-up entry open</div>':'')}
+        </div>
+        <div class="team">${badge(e,false)}<div class="teamname">${esc(e.strAwayTeam)}</div></div>
+      </div>
+      <div class="predgrid">
+        ${players.map((p,pi)=>`<div class="person"><div class="personname">${esc(p)}</div><div class="picks">${pickButton(e,pi,'H')}${pickButton(e,pi,'D')}${pickButton(e,pi,'A')}</div></div>`).join('')}
+      </div>
+    </article>`
+}
+function bindPickButtons(scope=document){
+  scope.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{
+    const [id,pi,code]=b.dataset.pick.split('|'), e=events.find(x=>x.idEvent===id);
+    if(!e||locked(e))return;
+    if(!picks[id])picks[id]=['','','',''];
+    picks[id][+pi]=picks[id][+pi]===code?'':code;
+    save();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()
+  }))
+}
+function renderThisWeek(){
+  const r=currentThisWeekRound();
+  const es=events.filter(e=>roundNum(e)===r).sort((a,b)=>(startTime(a)?.getTime()||0)-(startTime(b)?.getTime()||0));
+  const done=es.filter(e=>resultOf(e)).length;
+  const live=es.filter(e=>matchStatus(e).cls==='live').length;
+  $('#thisWeekSummary').textContent = es.length ? `Gameweek ${r} • ${done}/${es.length} completed${live?` • ${live} live`:''}` : 'No fixtures available.';
+  $('#thisWeekMatches').innerHTML = es.length ? es.map(matchCard).join('') : '<div class="panel empty">No fixtures found.</div>';
+  bindPickButtons($('#thisWeekMatches'));
+}
+
+function renderMatches(){
+  const es=events.filter(e=>String(roundNum(e))===String(currentRound)).sort((a,b)=>(startTime(a)?.getTime()||0)-(startTime(b)?.getTime()||0));
+  if(!es.length){$('#matches').innerHTML='<div class="panel empty">No fixtures found for this gameweek.</div>';return}
+  $('#matches').innerHTML=es.map(matchCard).join('');
+  bindPickButtons($('#matches'));
+}
+function renderControls(){
+  $('#round').innerHTML=rounds.map(r=>`<option value="${r}" ${String(r)===String(currentRound)?'selected':''}>Gameweek ${r}</option>`).join('');
+  const i=rounds.indexOf(+currentRound);$('#prev').disabled=i<=0;$('#next').disabled=i<0||i>=rounds.length-1
+}
+function chooseRound(){
+  const now=Date.now();
+  const upcoming=rounds.find(r=>events.some(e=>roundNum(e)===r && !resultOf(e) && (!startTime(e)||startTime(e).getTime()>now)));
+  currentRound=String(upcoming??rounds[rounds.length-1]??'')
+}
+function renderPlayers(){
+  $('#playerEditor').innerHTML=players.map((p,i)=>`<input aria-label="Player ${i+1}" data-player="${i}" value="${esc(p)}">`).join('');
+  document.querySelectorAll('[data-player]').forEach(inp=>inp.addEventListener('change',()=>{
+    players[+inp.dataset.player]=inp.value.trim()||`Player ${+inp.dataset.player+1}`;save();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()
+  }))
+}
+function normalizeFixtureFeed(data){
+  const list=(data&&data.events)||[];
+  return list
+    .filter(x=>x.date_utc && x.time_utc && x.fixture && x.fixture.includes(' vs '))
+    .map(x=>{
+      const parts=x.fixture.split(' vs ');
+      if(parts.length<2)return null;
+      const home=parts[0].trim();
+      const away=parts.slice(1).join(' vs ').trim();
+      return {
+        idEvent:`se-${x.match}`,
+        strTimestamp:`${x.date_utc}T${x.time_utc}:00Z`,
+        dateEvent:x.date_utc,
+        strTime:`${x.time_utc}:00`,
+        strHomeTeam:home,
+        strAwayTeam:away,
+        strHomeTeamBadge:'',
+        strAwayTeamBadge:'',
+        intHomeScore:null,
+        intAwayScore:null,
+        intRound:null,
+        strLeague:'English Premier League',
+        strStatus:x.status||'NS',
+        _supplemental:true
+      }
+    }).filter(Boolean)
+}
+function fixtureKey(e){
+  const d=startTime(e);
+  const day=d?d.toISOString().slice(0,10):(e.dateEvent||'');
+  const norm=s=>String(s||'').toLowerCase().replace(/^afc /,'').replace(/\s+/g,' ').trim();
+  return `${day}|${norm(e.strHomeTeam)}|${norm(e.strAwayTeam)}`
+}
+function assignSyntheticRounds(all){
+  // Preserve real rounds from TheSportsDB and infer missing supplemental rounds
+  // by matching them to the nearest real-round fixture in the same weekend cluster.
+  const real=all.filter(e=>Number.isFinite(roundNum(e)) && startTime(e));
+  const supp=all.filter(e=>!Number.isFinite(roundNum(e)) && startTime(e));
+  for(const e of supp){
+    const t=startTime(e).getTime();
+    let best=null,dist=Infinity;
+    for(const r of real){
+      const dd=Math.abs(startTime(r).getTime()-t);
+      if(dd<dist){dist=dd;best=r}
+    }
+    // Same gameweek can span Fri-Mon; allow 4 days.
+    if(best && dist<=4*24*60*60*1000) e.intRound=String(roundNum(best));
+  }
+  // If a whole weekend has no real-round anchor, group fixtures separated by <=4 days.
+  const unassigned=supp.filter(e=>!Number.isFinite(roundNum(e))).sort((a,b)=>startTime(a)-startTime(b));
+  let nextRound=(Math.max(0,...real.map(roundNum).filter(Number.isFinite))+1)||1;
+  let clusterStart=null,clusterRound=nextRound;
+  for(const e of unassigned){
+    const t=startTime(e).getTime();
+    if(clusterStart===null || t-clusterStart>4*24*60*60*1000){
+      clusterStart=t;clusterRound=nextRound++;
+    }
+    e.intRound=String(clusterRound);
+  }
+}
+async function load(){
+  $('#status').textContent='Refreshing full Premier League weekend…';
+  try{
+    const [sportsRes,fixtureRes]=await Promise.all([
+      fetch(API,{cache:'no-store'}),
+      fetch(FIXTURE_API,{cache:'no-store'})
+    ]);
+    if(!sportsRes.ok)throw new Error(`TheSportsDB HTTP ${sportsRes.status}`);
+    const sportsData=await sportsRes.json();
+    const base=(sportsData.events||[]).filter(e=>String(e.strLeague||'').toLowerCase().includes('premier'));
+
+    let supplemental=[];
+    if(fixtureRes.ok){
+      const fixtureData=await fixtureRes.json();
+      supplemental=normalizeFixtureFeed(fixtureData);
+    }
+
+    const byKey=new Map();
+    for(const e of supplemental) byKey.set(fixtureKey(e),e);
+    // Prefer TheSportsDB where both sources have the same fixture, because it supplies results/badges.
+    for(const e of base) byKey.set(fixtureKey(e),e);
+
+    events=[...byKey.values()];
+    assignSyntheticRounds(events);
+    rounds=[...new Set(events.map(roundNum).filter(Number.isFinite))].sort((a,b)=>a-b);
+
+    if(!currentRound||!rounds.includes(+currentRound))chooseRound();
+    renderControls();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard();
+
+    const thisRound=currentThisWeekRound();
+    const thisCount=events.filter(e=>roundNum(e)===thisRound).length;
+    const finished=events.filter(e=>resultOf(e)).length;
+    $('#status').textContent=`Updated • This Week: ${thisCount} fixtures • ${finished} results recorded`;
+  }catch(err){
+    $('#status').textContent='Could not refresh live fixture data. Your saved predictions are still safe on this device.';
+    console.error(err)
+  }
+}
+$('#refresh').addEventListener('click',load);
+$('#round').addEventListener('change',e=>{currentRound=e.target.value;renderControls();renderMatches();renderWeekBoard()});
+$('#prev').addEventListener('click',()=>{const i=rounds.indexOf(+currentRound);if(i>0){currentRound=String(rounds[i-1]);renderControls();renderMatches();renderWeekBoard()}});
+$('#next').addEventListener('click',()=>{const i=rounds.indexOf(+currentRound);if(i>=0&&i<rounds.length-1){currentRound=String(rounds[i+1]);renderControls();renderMatches();renderWeekBoard()}});
+$('#editPlayers').addEventListener('click',()=>$('#playerEditor').classList.toggle('hidden'));
+document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-tab]').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+  const tab=b.dataset.tab;
+  $('#thisWeekView').classList.toggle('hidden',tab!=='thisweek');
+  $('#weekView').classList.toggle('hidden',tab!=='week');
+  $('#seasonView').classList.toggle('hidden',tab!=='season');
+}));
+renderPlayers();renderWeekBoard();renderSeasonBoard();renderThisWeek();load();
+setInterval(()=>{renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()},60000);
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('Service worker registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>
