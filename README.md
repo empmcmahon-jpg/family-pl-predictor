@@ -1,18 +1,24 @@
-# Family Premier League Predictor
+# Family Premier League Predictor — v8
 
-## Deploy to GitHub Pages
-1. Create a new GitHub repository, e.g. `family-pl-predictor`.
-2. Upload all files in this folder to the repository root.
-3. In the repository go to **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**.
-5. Select **main** and **/(root)**, then **Save**.
-6. GitHub will publish a URL like:
-   `https://YOUR-USERNAME.github.io/family-pl-predictor/`
-7. Open that URL in Chrome on Android and choose **Add to Home screen** / **Install app**.
+## What changed
+- Match results are now refreshed from ESPN's public Premier League scoreboard feed.
+- This fills the gaps caused by TheSportsDB's free 15-event season limit.
+- Gameweek scores are calculated from actual completed results.
+- Season scores are calculated automatically from completed results.
+- Existing family predictions remain in browser local storage.
+- ESPN result responses are cached locally to reduce repeat requests.
+- GitHub Pages/PWA files are included.
 
-Predictions are stored in that browser/device using local storage.
+## Deploy
+Replace the existing `index.html` in the GitHub repository with the supplied `index.html`.
+Also upload/replace:
+- `manifest.webmanifest`
+- `sw.js`
+- `icon-192.png`
+- `icon-512.png`
 
-Data sources:
-- TheSportsDB for results and badges.
-- Sporting Events for supplemental upcoming fixtures.
-- Kick-off times are displayed in UAE time (Asia/Dubai, UTC+4).
+Keep the existing README if you want.
+
+After committing, wait for GitHub Pages to redeploy, then refresh the live app.
+
+Kick-off times continue to display in UAE time (UTC+4).

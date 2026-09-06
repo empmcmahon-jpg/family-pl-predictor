@@ -137,7 +137,7 @@ select,input{min-height:44px;border:1px solid var(--line);border-radius:10px;pad
     </div>
   </section>
 
-  <div class="footer">Results and club badges use TheSportsDB; missing upcoming fixtures are supplemented from Sporting Events so the complete weekend is shown. All kick-off times are converted from UTC to UAE local time (Asia/Dubai, UTC+4). Predictions and family names stay in this browser on this device.</div>
+  <div class="footer">Results are refreshed from ESPN; TheSportsDB and Sporting Events supply fixture details and club badges. All kick-off times are converted from UTC to UAE local time (Asia/Dubai, UTC+4). Predictions and family names stay in this browser on this device.</div>
 </div>
 
 <script>
@@ -145,6 +145,7 @@ const LEAGUE_ID='4328';
 const SEASON='2026-2027';
 const API=`https://www.thesportsdb.com/api/v1/json/123/eventsseason.php?id=${LEAGUE_ID}&s=${SEASON}`;
 const FIXTURE_API='https://sporting-events.org/data/premier-league.json';
+const ESPN_API='https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard';
 let players=JSON.parse(localStorage.getItem('fpp_players')||'["Eoghan","Zeinab","Hannah","Senan"]');
 let picks=JSON.parse(localStorage.getItem('fpp_picks')||'{}');
 let events=[],rounds=[],currentRound='';
@@ -154,8 +155,9 @@ function save(){localStorage.setItem('fpp_players',JSON.stringify(players));loca
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function roundNum(e){const n=parseInt(e.intRound??e.strRound??'',10);return Number.isFinite(n)?n:null}
 function resultOf(e){
-  if(e.intHomeScore===null||e.intHomeScore===''||e.intAwayScore===null||e.intAwayScore==='') return '';
+  if(e.intHomeScore===null||e.intHomeScore===undefined||e.intHomeScore===''||e.intAwayScore===null||e.intAwayScore===undefined||e.intAwayScore==='') return '';
   const h=Number(e.intHomeScore),a=Number(e.intAwayScore);
+  if(!Number.isFinite(h)||!Number.isFinite(a)) return '';
   return h>a?'H':h<a?'A':'D'
 }
 function startTime(e){
@@ -172,29 +174,19 @@ function startTime(e){
 }
 function uaeDateKey(d){
   if(!d)return '';
-  const parts=new Intl.DateTimeFormat('en-CA',{
-    timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'
-  }).formatToParts(d);
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
   const get=t=>parts.find(p=>p.type===t)?.value||'';
   return `${get('year')}-${get('month')}-${get('day')}`
 }
-function sameLocalDay(a,b){
-  return !!(a&&b&&uaeDateKey(a)===uaeDateKey(b))
-}
+function sameLocalDay(a,b){return !!(a&&b&&uaeDateKey(a)===uaeDateKey(b))}
 function locked(e){
-  const t=startTime(e);
-  if(!t) return false;
-  const now=new Date();
-  // Catch-up exception: today's matches can still be entered after kick-off/full-time.
-  if(sameLocalDay(t,now)) return false;
+  const t=startTime(e); if(!t)return false;
+  if(sameLocalDay(t,new Date()))return false;
   return Date.now()>=t.getTime()
 }
 function eventDate(e){
   const d=startTime(e); if(!d)return e.dateEvent||'';
-  return new Intl.DateTimeFormat('en-GB',{
-    timeZone:'Asia/Dubai',weekday:'short',day:'numeric',month:'short',
-    hour:'2-digit',minute:'2-digit',hour12:true
-  }).format(d) + ' UAE'
+  return new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Dubai',weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}).format(d)+' UAE'
 }
 function badge(e,home){
   const src=home?(e.strHomeTeamBadge||e.strHomeTeamLogo):(e.strAwayTeamBadge||e.strAwayTeamLogo);
@@ -203,11 +195,12 @@ function badge(e,home){
   return `<span class="fallback">${esc((name||'?').slice(0,3).toUpperCase())}</span>`
 }
 function scoreEvents(es){
-  return players.map((_,pi)=>es.reduce((s,e)=>s+(resultOf(e)&&picks[e.idEvent]?.[pi]===resultOf(e)?1:0),0))
+  return players.map((_,pi)=>es.reduce((s,e)=>{
+    const actual=resultOf(e), pick=picks[e.idEvent]?.[pi];
+    return s+(actual && pick===actual ? 1:0)
+  },0))
 }
-function ranking(scores){
-  return players.map((name,i)=>({name,score:scores[i],i})).sort((a,b)=>b.score-a.score||a.i-b.i)
-}
+function ranking(scores){return players.map((name,i)=>({name,score:scores[i]||0,i})).sort((a,b)=>b.score-a.score||a.i-b.i)}
 function renderBoard(el,scores){
   el.innerHTML=ranking(scores).map((p,i)=>`<div class="score"><div class="name">${i+1}. ${esc(p.name)}</div><div class="pts">${p.score}</div></div>`).join('')
 }
@@ -216,110 +209,53 @@ function renderWeekBoard(){
   renderBoard($('#weekBoard'),scoreEvents(es))
 }
 function renderSeasonBoard(){
-  const completed=events.filter(e=>resultOf(e));
-  renderBoard($('#seasonBoard'),scoreEvents(completed))
+  renderBoard($('#seasonBoard'),scoreEvents(events.filter(e=>resultOf(e))))
 }
 function pickChoiceContent(e,code){
-  if(code==='D') return `<span class="mini">D</span><span class="label">Draw</span>`;
-  const home=code==='H';
-  const name=home?e.strHomeTeam:e.strAwayTeam;
+  if(code==='D')return `<span class="mini">D</span><span class="label">Draw</span>`;
+  const home=code==='H',name=home?e.strHomeTeam:e.strAwayTeam;
   const src=home?(e.strHomeTeamBadge||e.strHomeTeamLogo):(e.strAwayTeamBadge||e.strAwayTeamLogo);
   const initials=(name||'?').slice(0,3).toUpperCase();
-  const icon=src
-    ? `<img src="${esc(src)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-grid'"><span class="mini" style="display:none">${esc(initials)}</span>`
-    : `<span class="mini">${esc(initials)}</span>`;
+  const icon=src?`<img src="${esc(src)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-grid'"><span class="mini" style="display:none">${esc(initials)}</span>`:`<span class="mini">${esc(initials)}</span>`;
   return `${icon}<span class="label">${esc(name)}</span>`
 }
 function pickButton(e,pi,code){
-  const active=picks[e.idEvent]?.[pi]===code, actual=resultOf(e), isLocked=locked(e);
+  const active=picks[e.idEvent]?.[pi]===code,actual=resultOf(e),isLocked=locked(e);
   let cls='pick'+(active?' active':'');
   if(actual&&active)cls+=code===actual?' correct':' wrong';
   const readable=code==='D'?'Draw':(code==='H'?e.strHomeTeam:e.strAwayTeam);
   return `<button class="${cls}" data-pick="${e.idEvent}|${pi}|${code}" ${isLocked?'disabled':''} aria-label="${esc(players[pi])}: ${esc(readable)}" aria-pressed="${active}">${pickChoiceContent(e,code)}</button>`
 }
-
-function currentThisWeekRound(){
-  const now = Date.now();
-
-  // Pick the gameweek whose overall fixture window contains "now".
-  // This keeps Sat/Sun/Mon fixtures together even after Saturday games finish.
-  for (const r of rounds) {
-    const es = events.filter(e => roundNum(e) === r && startTime(e));
-    if (!es.length) continue;
-
-    const times = es.map(e => startTime(e).getTime()).sort((a,b)=>a-b);
-    const first = times[0];
-    const last = times[times.length - 1];
-
-    // Treat a gameweek as active from 12 hours before first KO
-    // until 18 hours after the final scheduled KO.
-    if (now >= first - 12*60*60*1000 && now <= last + 18*60*60*1000) {
-      return r;
-    }
-  }
-
-  // Otherwise choose the next gameweek with any upcoming fixture.
-  const nextRound = rounds.find(r => events.some(e => {
-    const t = startTime(e);
-    return roundNum(e) === r && t && t.getTime() > now;
-  }));
-  if (nextRound) return nextRound;
-
-  // Fallback to the latest round with any completed result.
-  const latestCompleted = [...rounds].reverse().find(r =>
-    events.some(e => roundNum(e) === r && resultOf(e))
-  );
-
-  return latestCompleted ?? rounds[0] ?? '';
-}
 function matchStatus(e){
-  const r=resultOf(e), t=startTime(e), now=Date.now();
-  if(r) return {label:'Completed',cls:'completed'};
-  if(t && now >= t.getTime() && now < t.getTime()+3*60*60*1000) return {label:'Live',cls:'live'};
-  return {label:'Upcoming',cls:'upcoming'};
+  const r=resultOf(e),t=startTime(e),now=Date.now();
+  if(r)return {label:'Completed',cls:'completed'};
+  if(t&&now>=t.getTime()&&now<t.getTime()+3*60*60*1000)return {label:'Live',cls:'live'};
+  return {label:'Upcoming',cls:'upcoming'}
 }
 function matchCard(e){
-  const r=resultOf(e), isLocked=locked(e), st=matchStatus(e);
-  return `<article class="match">
-      <div class="matchhead">
-        <div class="team">${badge(e,true)}<div class="teamname">${esc(e.strHomeTeam)}</div></div>
-        <div class="center">
-          <div class="scoreline">${r?`${e.intHomeScore}–${e.intAwayScore}`:'v'}</div>
-          <div class="kick">${esc(eventDate(e))}</div>
-          <span class="matchstatus ${st.cls}">${st.label}</span>
-          ${isLocked?'<div class="locked">Picks locked</div>':(locked(e)===false && startTime(e) && Date.now()>=startTime(e).getTime()?'<div class="locked">Today: catch-up entry open</div>':'')}
-        </div>
-        <div class="team">${badge(e,false)}<div class="teamname">${esc(e.strAwayTeam)}</div></div>
-      </div>
-      <div class="predgrid">
-        ${players.map((p,pi)=>`<div class="person"><div class="personname">${esc(p)}</div><div class="picks">${pickButton(e,pi,'H')}${pickButton(e,pi,'D')}${pickButton(e,pi,'A')}</div></div>`).join('')}
-      </div>
-    </article>`
+  const r=resultOf(e),isLocked=locked(e),st=matchStatus(e);
+  return `<article class="match"><div class="matchhead">
+    <div class="team">${badge(e,true)}<div class="teamname">${esc(e.strHomeTeam)}</div></div>
+    <div class="center"><div class="scoreline">${r?`${e.intHomeScore}–${e.intAwayScore}`:'v'}</div><div class="kick">${esc(eventDate(e))}</div><span class="matchstatus ${st.cls}">${st.label}</span>${isLocked?'<div class="locked">Picks locked</div>':(startTime(e)&&Date.now()>=startTime(e).getTime()?'<div class="locked">Today: catch-up entry open</div>':'')}</div>
+    <div class="team">${badge(e,false)}<div class="teamname">${esc(e.strAwayTeam)}</div></div>
+  </div><div class="predgrid">${players.map((p,pi)=>`<div class="person"><div class="personname">${esc(p)}</div><div class="picks">${pickButton(e,pi,'H')}${pickButton(e,pi,'D')}${pickButton(e,pi,'A')}</div></div>`).join('')}</div></article>`
 }
 function bindPickButtons(scope=document){
   scope.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{
-    const [id,pi,code]=b.dataset.pick.split('|'), e=events.find(x=>x.idEvent===id);
-    if(!e||locked(e))return;
+    const [id,pi,code]=b.dataset.pick.split('|'),e=events.find(x=>x.idEvent===id); if(!e||locked(e))return;
     if(!picks[id])picks[id]=['','','',''];
-    picks[id][+pi]=picks[id][+pi]===code?'':code;
-    save();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()
+    picks[id][+pi]=picks[id][+pi]===code?'':code; save(); renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()
   }))
 }
 function renderThisWeek(){
-  const r=currentThisWeekRound();
-  const es=events.filter(e=>roundNum(e)===r).sort((a,b)=>(startTime(a)?.getTime()||0)-(startTime(b)?.getTime()||0));
-  const done=es.filter(e=>resultOf(e)).length;
-  const live=es.filter(e=>matchStatus(e).cls==='live').length;
-  $('#thisWeekSummary').textContent = es.length ? `Gameweek ${r} • ${done}/${es.length} completed${live?` • ${live} live`:''}` : 'No fixtures available.';
-  $('#thisWeekMatches').innerHTML = es.length ? es.map(matchCard).join('') : '<div class="panel empty">No fixtures found.</div>';
-  bindPickButtons($('#thisWeekMatches'));
+  const r=currentThisWeekRound(),es=events.filter(e=>String(roundNum(e))===String(r)).sort((a,b)=>(startTime(a)?.getTime()||0)-(startTime(b)?.getTime()||0));
+  const done=es.filter(e=>resultOf(e)).length,live=es.filter(e=>matchStatus(e).cls==='live').length;
+  $('#thisWeekSummary').textContent=es.length?`Gameweek ${r} • ${done}/${es.length} completed${live?` • ${live} live`:''}`:'No fixtures available.';
+  $('#thisWeekMatches').innerHTML=es.length?es.map(matchCard).join(''):'<div class="panel empty">No fixtures found.</div>'; bindPickButtons($('#thisWeekMatches'))
 }
-
 function renderMatches(){
   const es=events.filter(e=>String(roundNum(e))===String(currentRound)).sort((a,b)=>(startTime(a)?.getTime()||0)-(startTime(b)?.getTime()||0));
-  if(!es.length){$('#matches').innerHTML='<div class="panel empty">No fixtures found for this gameweek.</div>';return}
-  $('#matches').innerHTML=es.map(matchCard).join('');
-  bindPickButtons($('#matches'));
+  $('#matches').innerHTML=es.length?es.map(matchCard).join(''):'<div class="panel empty">No fixtures found for this gameweek.</div>'; bindPickButtons($('#matches'))
 }
 function renderControls(){
   $('#round').innerHTML=rounds.map(r=>`<option value="${r}" ${String(r)===String(currentRound)?'selected':''}>Gameweek ${r}</option>`).join('');
@@ -327,112 +263,122 @@ function renderControls(){
 }
 function chooseRound(){
   const now=Date.now();
-  const upcoming=rounds.find(r=>events.some(e=>roundNum(e)===r && !resultOf(e) && (!startTime(e)||startTime(e).getTime()>now)));
+  const upcoming=rounds.find(r=>events.some(e=>roundNum(e)===r&&!resultOf(e)&&(!startTime(e)||startTime(e).getTime()>now)));
   currentRound=String(upcoming??rounds[rounds.length-1]??'')
+}
+function currentThisWeekRound(){
+  const now=Date.now();
+  for(const r of rounds){
+    const es=events.filter(e=>roundNum(e)===r&&startTime(e)); if(!es.length)continue;
+    const times=es.map(e=>startTime(e).getTime()).sort((a,b)=>a-b),first=times[0],last=times[times.length-1];
+    if(now>=first-12*60*60*1000&&now<=last+18*60*60*1000)return r
+  }
+  return chooseNextRoundNumber()??rounds[0]??''
+}
+function chooseNextRoundNumber(){
+  const now=Date.now();
+  return rounds.find(r=>events.some(e=>roundNum(e)===r&&startTime(e)&&startTime(e).getTime()>now))??null
 }
 function renderPlayers(){
   $('#playerEditor').innerHTML=players.map((p,i)=>`<input aria-label="Player ${i+1}" data-player="${i}" value="${esc(p)}">`).join('');
-  document.querySelectorAll('[data-player]').forEach(inp=>inp.addEventListener('change',()=>{
-    players[+inp.dataset.player]=inp.value.trim()||`Player ${+inp.dataset.player+1}`;save();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()
-  }))
+  document.querySelectorAll('[data-player]').forEach(inp=>inp.addEventListener('change',()=>{players[+inp.dataset.player]=inp.value.trim()||`Player ${+inp.dataset.player+1}`;save();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()}))
 }
 function normalizeFixtureFeed(data){
   const list=(data&&data.events)||[];
-  return list
-    .filter(x=>x.date_utc && x.time_utc && x.fixture && x.fixture.includes(' vs '))
-    .map(x=>{
-      const parts=x.fixture.split(' vs ');
-      if(parts.length<2)return null;
-      const home=parts[0].trim();
-      const away=parts.slice(1).join(' vs ').trim();
-      return {
-        idEvent:`se-${x.match}`,
-        strTimestamp:`${x.date_utc}T${x.time_utc}:00Z`,
-        dateEvent:x.date_utc,
-        strTime:`${x.time_utc}:00`,
-        strHomeTeam:home,
-        strAwayTeam:away,
-        strHomeTeamBadge:'',
-        strAwayTeamBadge:'',
-        intHomeScore:null,
-        intAwayScore:null,
-        intRound:null,
-        strLeague:'English Premier League',
-        strStatus:x.status||'NS',
-        _supplemental:true
-      }
-    }).filter(Boolean)
+  return list.filter(x=>x.date_utc&&x.time_utc&&x.fixture&&x.fixture.includes(' vs ')).map(x=>{
+    const parts=x.fixture.split(' vs '); if(parts.length<2)return null;
+    const home=parts[0].trim(),away=parts.slice(1).join(' vs ').trim();
+    return {idEvent:`se-${x.match}`,strTimestamp:`${x.date_utc}T${x.time_utc}:00Z`,dateEvent:x.date_utc,strTime:`${x.time_utc}:00`,strHomeTeam:home,strAwayTeam:away,strHomeTeamBadge:'',strAwayTeamBadge:'',intHomeScore:null,intAwayScore:null,intRound:null,strLeague:'English Premier League',strStatus:x.status||'NS',_supplemental:true}
+  }).filter(Boolean)
 }
 function fixtureKey(e){
-  const d=startTime(e);
-  const day=d?d.toISOString().slice(0,10):(e.dateEvent||'');
-  const norm=s=>String(s||'').toLowerCase().replace(/^afc /,'').replace(/\s+/g,' ').trim();
+  const d=startTime(e),day=d?d.toISOString().slice(0,10):(e.dateEvent||'');
+  const norm=s=>String(s||'').toLowerCase().replace(/^afc /,'').replace(/\bmanchester united\b/g,'man utd').replace(/\bmanchester city\b/g,'man city').replace(/\s+/g,' ').trim();
   return `${day}|${norm(e.strHomeTeam)}|${norm(e.strAwayTeam)}`
 }
-function assignSyntheticRounds(all){
-  // Preserve real rounds from TheSportsDB and infer missing supplemental rounds
-  // by matching them to the nearest real-round fixture in the same weekend cluster.
-  const real=all.filter(e=>Number.isFinite(roundNum(e)) && startTime(e));
-  const supp=all.filter(e=>!Number.isFinite(roundNum(e)) && startTime(e));
-  for(const e of supp){
-    const t=startTime(e).getTime();
-    let best=null,dist=Infinity;
-    for(const r of real){
-      const dd=Math.abs(startTime(r).getTime()-t);
-      if(dd<dist){dist=dd;best=r}
-    }
-    // Same gameweek can span Fri-Mon; allow 4 days.
-    if(best && dist<=4*24*60*60*1000) e.intRound=String(roundNum(best));
+function espnDateKeyFromDate(d){return d.toISOString().slice(0,10).replaceAll('-','')}
+function dateRange(start,end){const out=[];let d=new Date(start+'T00:00:00Z'),last=new Date(end+'T00:00:00Z');while(d<=last){out.push(espnDateKeyFromDate(d));d.setUTCDate(d.getUTCDate()+1)}return out}
+function normalizeEspnEvent(ev){
+  const comp=ev.competitions?.[0], cs=comp?.competitors||[];
+  const home=cs.find(c=>c.homeAway==='home'),away=cs.find(c=>c.homeAway==='away'); if(!home||!away)return null;
+  const date=ev.date||comp?.date; if(!date)return null;
+  const hs=home.score,as=away.score;
+  return {espnId:String(ev.id),dateEvent:date.slice(0,10),strTimestamp:date,strHomeTeam:home.team?.displayName||home.team?.shortDisplayName||'',strAwayTeam:away.team?.displayName||away.team?.shortDisplayName||'',intHomeScore:hs===undefined||hs===null||hs===''?null:Number(hs),intAwayScore:as===undefined||as===null||as===''?null:Number(as),strHomeTeamBadge:home.team?.logo||'',strAwayTeamBadge:away.team?.logo||'',completed:!!ev.status?.type?.completed||ev.status?.type?.state==='post',status:ev.status?.type?.name||'',_espn:true}
+}
+async function fetchEspnDates(dates){
+  const uniq=[...new Set(dates)];
+  const cache=JSON.parse(localStorage.getItem('fpp_espn_cache')||'{}');
+  const now=Date.now(), results=[];
+  const missing=[];
+  for(const d of uniq){
+    const hit=cache[d];
+    // Keep completed-date responses for 6 hours; today's data refreshes every 2 minutes.
+    const ttl=d===espnDateKeyFromDate(new Date())?2*60*1000:6*60*60*1000;
+    if(hit&&now-hit.savedAt<ttl) results.push(...hit.events); else missing.push(d);
   }
-  // If a whole weekend has no real-round anchor, group fixtures separated by <=4 days.
-  const unassigned=supp.filter(e=>!Number.isFinite(roundNum(e))).sort((a,b)=>startTime(a)-startTime(b));
-  let nextRound=(Math.max(0,...real.map(roundNum).filter(Number.isFinite))+1)||1;
-  let clusterStart=null,clusterRound=nextRound;
-  for(const e of unassigned){
-    const t=startTime(e).getTime();
-    if(clusterStart===null || t-clusterStart>4*24*60*60*1000){
-      clusterStart=t;clusterRound=nextRound++;
-    }
-    e.intRound=String(clusterRound);
+  const fresh=await Promise.all(missing.map(async d=>{
+    try{const r=await fetch(`${ESPN_API}?dates=${d}`,{cache:'no-store'});if(!r.ok)return {d,events:[]};const j=await r.json();return {d,events:(j.events||[]).map(normalizeEspnEvent).filter(Boolean)}
+    }catch(e){console.warn('ESPN date failed',d,e);return {d,events:[]}}
+  }));
+  for(const item of fresh){cache[item.d]={savedAt:now,events:item.events};results.push(...item.events)}
+  try{localStorage.setItem('fpp_espn_cache',JSON.stringify(cache))}catch(e){console.warn('ESPN cache save failed',e)}
+  return results
+}
+function mergeResultIntoFixture(target,source){
+  target.intHomeScore=source.intHomeScore; target.intAwayScore=source.intAwayScore;
+  if(source.strHomeTeamBadge)target.strHomeTeamBadge=source.strHomeTeamBadge;
+  if(source.strAwayTeamBadge)target.strAwayTeamBadge=source.strAwayTeamBadge;
+  target._resultSource='ESPN';
+  if(source.completed)target.strStatus='FT'
+}
+function migrateOldPicks(baseEvents){
+  // v7 used TheSportsDB ids. Map those picks to the new stable ESPN/supplemental ids where possible.
+  const legacyIds=Object.keys(picks); if(!legacyIds.length)return;
+  const legacyById=new Map(baseEvents.filter(e=>e.idEvent&&String(e.idEvent)).map(e=>[String(e.idEvent),e]));
+  const keyToNew=new Map(events.map(e=>[fixtureKey(e),e.idEvent]));
+  let changed=false;
+  for(const id of legacyIds){
+    if(id.startsWith('se-')||id.startsWith('espn-'))continue;
+    const old=legacyById.get(id); if(!old)continue;
+    const nid=keyToNew.get(fixtureKey(old));
+    if(nid&&nid!==id&&!picks[nid]){picks[nid]=picks[id];changed=true}
   }
+  if(changed)save()
 }
 async function load(){
-  $('#status').textContent='Refreshing full Premier League weekend…';
+  $('#status').textContent='Refreshing fixtures, results and family scores…';
   try{
-    const [sportsRes,fixtureRes]=await Promise.all([
-      fetch(API,{cache:'no-store'}),
-      fetch(FIXTURE_API,{cache:'no-store'})
-    ]);
+    const [sportsRes,fixtureRes]=await Promise.all([fetch(API,{cache:'no-store'}),fetch(FIXTURE_API,{cache:'no-store'})]);
     if(!sportsRes.ok)throw new Error(`TheSportsDB HTTP ${sportsRes.status}`);
     const sportsData=await sportsRes.json();
     const base=(sportsData.events||[]).filter(e=>String(e.strLeague||'').toLowerCase().includes('premier'));
-
-    let supplemental=[];
-    if(fixtureRes.ok){
-      const fixtureData=await fixtureRes.json();
-      supplemental=normalizeFixtureFeed(fixtureData);
-    }
-
-    const byKey=new Map();
-    for(const e of supplemental) byKey.set(fixtureKey(e),e);
-    // Prefer TheSportsDB where both sources have the same fixture, because it supplies results/badges.
-    for(const e of base) byKey.set(fixtureKey(e),e);
-
+    let supplemental=[]; if(fixtureRes.ok){try{supplemental=normalizeFixtureFeed(await fixtureRes.json())}catch(e){console.warn('Fixture feed unavailable',e)}}
+    const byKey=new Map(); for(const e of supplemental)byKey.set(fixtureKey(e),e); for(const e of base)byKey.set(fixtureKey(e),e);
     events=[...byKey.values()];
+    // Get current season results directly from ESPN by date. This fills gaps in TheSportsDB's free 15-event season feed.
+    const seasonStart='2026-08-01',today=uaeDateKey(new Date());
+    const resultDates=dateRange(seasonStart,today);
+    const espn=await fetchEspnDates(resultDates);
+    const espnByKey=new Map(espn.map(e=>[fixtureKey(e),e]));
+    for(const e of events){const r=espnByKey.get(fixtureKey(e));if(r)mergeResultIntoFixture(e,r)}
+    // Add any ESPN fixtures that are missing from the two schedule feeds.
+    for(const r of espn){if(!byKey.has(fixtureKey(r))){r.idEvent=`espn-${r.espnId}`;r.intRound=null;r.strLeague='English Premier League';events.push(r)}}
     assignSyntheticRounds(events);
     rounds=[...new Set(events.map(roundNum).filter(Number.isFinite))].sort((a,b)=>a-b);
-
     if(!currentRound||!rounds.includes(+currentRound))chooseRound();
     renderControls();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard();
-
-    const thisRound=currentThisWeekRound();
-    const thisCount=events.filter(e=>roundNum(e)===thisRound).length;
-    const finished=events.filter(e=>resultOf(e)).length;
+    const thisRound=currentThisWeekRound(),thisCount=events.filter(e=>roundNum(e)===thisRound).length,finished=events.filter(e=>resultOf(e)).length;
     $('#status').textContent=`Updated • This Week: ${thisCount} fixtures • ${finished} results recorded`;
   }catch(err){
-    $('#status').textContent='Could not refresh live fixture data. Your saved predictions are still safe on this device.';
-    console.error(err)
+    $('#status').textContent='Could not refresh live fixture data. Your saved predictions are still safe on this device.'; console.error(err)
   }
+}
+function assignSyntheticRounds(all){
+  const real=all.filter(e=>Number.isFinite(roundNum(e))&&startTime(e)),supp=all.filter(e=>!Number.isFinite(roundNum(e))&&startTime(e));
+  for(const e of supp){const t=startTime(e).getTime();let best=null,dist=Infinity;for(const r of real){const dd=Math.abs(startTime(r).getTime()-t);if(dd<dist){dist=dd;best=r}}if(best&&dist<=4*24*60*60*1000)e.intRound=String(roundNum(best))}
+  const unassigned=supp.filter(e=>!Number.isFinite(roundNum(e))).sort((a,b)=>startTime(a)-startTime(b));
+  let nextRound=(Math.max(0,...real.map(roundNum).filter(Number.isFinite))+1)||1,clusterStart=null,clusterRound=nextRound;
+  for(const e of unassigned){const t=startTime(e).getTime();if(clusterStart===null||t-clusterStart>4*24*60*60*1000){clusterStart=t;clusterRound=nextRound++}e.intRound=String(clusterRound)}
 }
 $('#refresh').addEventListener('click',load);
 $('#round').addEventListener('change',e=>{currentRound=e.target.value;renderControls();renderMatches();renderWeekBoard()});
