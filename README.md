@@ -1,24 +1,12 @@
-# Family Premier League Predictor — v8
+# Family Premier League Predictor v9
 
-## What changed
-- Match results are now refreshed from ESPN's public Premier League scoreboard feed.
-- This fills the gaps caused by TheSportsDB's free 15-event season limit.
-- Gameweek scores are calculated from actual completed results.
-- Season scores are calculated automatically from completed results.
-- Existing family predictions remain in browser local storage.
-- ESPN result responses are cached locally to reduce repeat requests.
-- GitHub Pages/PWA files are included.
+This version is prepared for the existing GitHub Pages repository.
 
-## Deploy
-Replace the existing `index.html` in the GitHub repository with the supplied `index.html`.
-Also upload/replace:
-- `manifest.webmanifest`
-- `sw.js`
-- `icon-192.png`
-- `icon-512.png`
+Focus of v9:
+- Separate prediction storage by gameweek.
+- A new gameweek does not inherit the previous game's picks.
+- Historical gameweek score records are stored separately from current picks.
+- Legacy picks are quarantined rather than automatically assigned to a new week.
+- GitHub Pages/PWA files included.
 
-Keep the existing README if you want.
-
-After committing, wait for GitHub Pages to redeploy, then refresh the live app.
-
-Kick-off times continue to display in UAE time (UTC+4).
+Upload/replace `index.html`, `manifest.webmanifest`, `sw.js`, `icon-192.png`, and `icon-512.png` in the existing repository, then commit.

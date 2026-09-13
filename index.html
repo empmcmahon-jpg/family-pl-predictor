@@ -402,5 +402,85 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+
+<script id="family-v9-storage-fix">
+(function(){
+  const PICK_KEY_OLD = 'plpicks';
+  const PICK_KEY_NEW = 'familyPLPicksByWeek_v9';
+  const SCORE_KEY = 'familyPLScores_v9';
+  const MIGRATED = 'familyPLV9Migrated';
+
+  function read(k, fallback){
+    try { const x=localStorage.getItem(k); return x ? JSON.parse(x) : fallback; }
+    catch(e){ return fallback; }
+  }
+  function write(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+
+  // Public helpers for the app to use when v9-aware code is added.
+  window.FamilyV9 = {
+    getPicks: function(week){
+      const all = read(PICK_KEY_NEW, {});
+      return all[String(week)] || {};
+    },
+    setPick: function(week, fixture, player, value){
+      const all = read(PICK_KEY_NEW, {});
+      const w = String(week);
+      if(!all[w]) all[w] = {};
+      if(!all[w][fixture]) all[w][fixture] = {};
+      if(value === null || value === '') delete all[w][fixture][player];
+      else all[w][fixture][player] = value;
+      write(PICK_KEY_NEW, all);
+    },
+    getScores: function(){
+      return read(SCORE_KEY, {});
+    },
+    saveWeek: function(week, scores){
+      const all = read(SCORE_KEY, {});
+      all[String(week)] = Object.assign({}, scores, {savedAt: new Date().toISOString()});
+      write(SCORE_KEY, all);
+    },
+    resetWeek: function(week){
+      const all = read(PICK_KEY_NEW, {});
+      delete all[String(week)];
+      write(PICK_KEY_NEW, all);
+    },
+    migrateOld: function(){
+      if(localStorage.getItem(MIGRATED)) return;
+      const old = read(PICK_KEY_OLD, null);
+      if(old && typeof old === 'object'){
+        // Do not guess which week old picks belong to. Put them in a legacy bucket
+        // so they can be inspected without contaminating the new/current week.
+        const all = read(PICK_KEY_NEW, {});
+        all._legacy = old;
+        write(PICK_KEY_NEW, all);
+      }
+      localStorage.setItem(MIGRATED, '1');
+    }
+  };
+  FamilyV9.migrateOld();
+})();
+</script>
+
+
+<script>
+(function(){
+  function enforceBlankNewWeek(){
+    // The existing app's own rendering will call its normal storage routines.
+    // This guard only clears stale DOM selections when a different gameweek is selected.
+    let lastWeek = sessionStorage.getItem('familyPL_lastWeek_v9');
+    const sel = document.querySelector('select');
+    if(!sel) return;
+    const week = sel.value;
+    if(lastWeek && lastWeek !== week){
+      document.querySelectorAll('[data-pick]').forEach(function(el){
+        if(el.tagName==='BUTTON') el.classList.remove('selected','active');
+      });
+    }
+    sessionStorage.setItem('familyPL_lastWeek_v9', week);
+  }
+  window.addEventListener('load', function(){ setTimeout(enforceBlankNewWeek, 500); });
+})();
+</script>
+
 </body>
 </html>
