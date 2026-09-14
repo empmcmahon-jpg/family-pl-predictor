@@ -148,13 +148,28 @@ const FIXTURE_API='https://sporting-events.org/data/premier-league.json';
 const ESPN_API='https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard';
 let players=JSON.parse(localStorage.getItem('fpp_players')||'["Eoghan","Zeinab","Hannah","Senan"]');
 let picks=JSON.parse(localStorage.getItem('fpp_picks')||'{}');
+let scopedPicks=JSON.parse(localStorage.getItem('fpp_picks_by_week_v10')||'{}');
+let savedWeekScores=JSON.parse(localStorage.getItem('fpp_week_scores_v10')||'{}');
 let events=[],rounds=[],currentRound='';
 const $=s=>document.querySelector(s);
 
-function save(){localStorage.setItem('fpp_players',JSON.stringify(players));localStorage.setItem('fpp_picks',JSON.stringify(picks))}
+function save(){localStorage.setItem('fpp_players',JSON.stringify(players));localStorage.setItem('fpp_picks',JSON.stringify(picks));localStorage.setItem('fpp_picks_by_week_v10',JSON.stringify(scopedPicks));localStorage.setItem('fpp_week_scores_v10',JSON.stringify(savedWeekScores))}
+function weekPick(id,pi){return scopedPicks[String(currentRound)]?.[id]?.[pi]||''}
+function setWeekPick(week,id,pi,val){const w=String(week);if(!scopedPicks[w])scopedPicks[w]={};if(!scopedPicks[w][id])scopedPicks[w][id]=['','','',''];scopedPicks[w][id][pi]=val;save()}
+function isCompleted(e){
+  if(e.completed===true)return true;
+  const st=String(e.strStatus||e.status||'').toLowerCase();
+  if(/^(ft|finished|match finished|post|final|full time)$/.test(st))return true;
+  // TheSportsDB historical events may have scores without a completion flag.
+  // Only trust those scores for matches at least 4 hours after kickoff; never use
+  // a score alone for a future/live fixture.
+  const t=startTime(e);
+  return !!(t && t.getTime()<Date.now()-4*60*60*1000 && e.intHomeScore!==null && e.intHomeScore!==undefined && e.intAwayScore!==null && e.intAwayScore!==undefined && !e._espn);
+}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
 function roundNum(e){const n=parseInt(e.intRound??e.strRound??'',10);return Number.isFinite(n)?n:null}
 function resultOf(e){
+  if(!isCompleted(e))return '';
   if(e.intHomeScore===null||e.intHomeScore===undefined||e.intHomeScore===''||e.intAwayScore===null||e.intAwayScore===undefined||e.intAwayScore==='') return '';
   const h=Number(e.intHomeScore),a=Number(e.intAwayScore);
   if(!Number.isFinite(h)||!Number.isFinite(a)) return '';
@@ -195,10 +210,11 @@ function badge(e,home){
   return `<span class="fallback">${esc((name||'?').slice(0,3).toUpperCase())}</span>`
 }
 function scoreEvents(es){
-  return players.map((_,pi)=>es.reduce((s,e)=>{
-    const actual=resultOf(e), pick=picks[e.idEvent]?.[pi];
-    return s+(actual && pick===actual ? 1:0)
-  },0))
+  const week=String(currentRound);
+  return players.map((_,pi)=>es.reduce((sum,e)=>{
+    const actual=resultOf(e), pick=scopedPicks[week]?.[e.idEvent]?.[pi]||'';
+    return sum+(actual && pick===actual ? 1:0);
+  },0));
 }
 function ranking(scores){return players.map((name,i)=>({name,score:scores[i]||0,i})).sort((a,b)=>b.score-a.score||a.i-b.i)}
 function renderBoard(el,scores){
@@ -209,7 +225,11 @@ function renderWeekBoard(){
   renderBoard($('#weekBoard'),scoreEvents(es))
 }
 function renderSeasonBoard(){
-  renderBoard($('#seasonBoard'),scoreEvents(events.filter(e=>resultOf(e))))
+  const totals=players.map((_,pi)=>rounds.reduce((sum,r)=>{
+    const es=events.filter(e=>String(roundNum(e))===String(r));
+    return sum+es.reduce((n,e)=>{const a=resultOf(e),p=scopedPicks[String(r)]?.[e.idEvent]?.[pi]||'';return n+(a&&p===a?1:0)},0);
+  },0));
+  renderBoard($('#seasonBoard'),totals);
 }
 function pickChoiceContent(e,code){
   if(code==='D')return `<span class="mini">D</span><span class="label">Draw</span>`;
@@ -220,15 +240,15 @@ function pickChoiceContent(e,code){
   return `${icon}<span class="label">${esc(name)}</span>`
 }
 function pickButton(e,pi,code){
-  const active=picks[e.idEvent]?.[pi]===code,actual=resultOf(e),isLocked=locked(e);
+  const active=weekPick(e.idEvent,pi)===code,actual=resultOf(e),isLocked=locked(e);
   let cls='pick'+(active?' active':'');
   if(actual&&active)cls+=code===actual?' correct':' wrong';
   const readable=code==='D'?'Draw':(code==='H'?e.strHomeTeam:e.strAwayTeam);
   return `<button class="${cls}" data-pick="${e.idEvent}|${pi}|${code}" ${isLocked?'disabled':''} aria-label="${esc(players[pi])}: ${esc(readable)}" aria-pressed="${active}">${pickChoiceContent(e,code)}</button>`
 }
 function matchStatus(e){
-  const r=resultOf(e),t=startTime(e),now=Date.now();
-  if(r)return {label:'Completed',cls:'completed'};
+  const t=startTime(e),now=Date.now();
+  if(isCompleted(e))return {label:'Completed',cls:'completed'};
   if(t&&now>=t.getTime()&&now<t.getTime()+3*60*60*1000)return {label:'Live',cls:'live'};
   return {label:'Upcoming',cls:'upcoming'}
 }
@@ -240,11 +260,12 @@ function matchCard(e){
     <div class="team">${badge(e,false)}<div class="teamname">${esc(e.strAwayTeam)}</div></div>
   </div><div class="predgrid">${players.map((p,pi)=>`<div class="person"><div class="personname">${esc(p)}</div><div class="picks">${pickButton(e,pi,'H')}${pickButton(e,pi,'D')}${pickButton(e,pi,'A')}</div></div>`).join('')}</div></article>`
 }
+function weekPickFor(week,id,pi){return scopedPicks[String(week)]?.[id]?.[pi]||''}
+
 function bindPickButtons(scope=document){
   scope.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{
     const [id,pi,code]=b.dataset.pick.split('|'),e=events.find(x=>x.idEvent===id); if(!e||locked(e))return;
-    if(!picks[id])picks[id]=['','','',''];
-    picks[id][+pi]=picks[id][+pi]===code?'':code; save(); renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()
+    const week=String(roundNum(e)); const old=weekPickFor(week,id,+pi); setWeekPick(week,id,+pi,old===code?'':code); renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard()
   }))
 }
 function renderThisWeek(){
@@ -345,6 +366,29 @@ function migrateOldPicks(baseEvents){
   }
   if(changed)save()
 }
+function migratePicksIntoWeeks(){
+  // One-time migration of existing per-fixture picks into gameweek-scoped storage.
+  // This prevents old Week 3 selections from appearing in Week 4.
+  let changed=false;
+  for(const e of events){
+    const r=roundNum(e); if(!Number.isFinite(r))continue;
+    const old=picks[e.idEvent]; if(!old)continue;
+    const w=String(r);
+    if(!scopedPicks[w])scopedPicks[w]={};
+    if(!scopedPicks[w][e.idEvent]){scopedPicks[w][e.idEvent]=Array.isArray(old)?old.slice(0,4):['','','',''];changed=true;}
+  }
+  if(changed)save();
+}
+function saveCompletedWeekScores(){
+  for(const r of rounds){
+    const es=events.filter(e=>String(roundNum(e))===String(r));
+    const completed=es.filter(isCompleted);
+    if(!completed.length)continue;
+    const scores=players.map((_,pi)=>completed.reduce((n,e)=>{const a=resultOf(e),p=scopedPicks[String(r)]?.[e.idEvent]?.[pi]||'';return n+(a&&p===a?1:0)},0));
+    savedWeekScores[String(r)]={scores,savedAt:new Date().toISOString(),completed:completed.length,total:es.length};
+  }
+  save();
+}
 async function load(){
   $('#status').textContent='Refreshing fixtures, results and family scores…';
   try{
@@ -364,10 +408,12 @@ async function load(){
     // Add any ESPN fixtures that are missing from the two schedule feeds.
     for(const r of espn){if(!byKey.has(fixtureKey(r))){r.idEvent=`espn-${r.espnId}`;r.intRound=null;r.strLeague='English Premier League';events.push(r)}}
     assignSyntheticRounds(events);
+    migratePicksIntoWeeks();
     rounds=[...new Set(events.map(roundNum).filter(Number.isFinite))].sort((a,b)=>a-b);
     if(!currentRound||!rounds.includes(+currentRound))chooseRound();
+    saveCompletedWeekScores();
     renderControls();renderMatches();renderThisWeek();renderWeekBoard();renderSeasonBoard();
-    const thisRound=currentThisWeekRound(),thisCount=events.filter(e=>roundNum(e)===thisRound).length,finished=events.filter(e=>resultOf(e)).length;
+    const thisRound=currentThisWeekRound(),thisCount=events.filter(e=>roundNum(e)===thisRound).length,finished=events.filter(e=>isCompleted(e)).length;
     $('#status').textContent=`Updated • This Week: ${thisCount} fixtures • ${finished} results recorded`;
   }catch(err){
     $('#status').textContent='Could not refresh live fixture data. Your saved predictions are still safe on this device.'; console.error(err)
@@ -403,11 +449,11 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 
-<script id="family-v9-storage-fix">
+<script id="family-v10-storage-fix">
 (function(){
   const PICK_KEY_OLD = 'plpicks';
-  const PICK_KEY_NEW = 'familyPLPicksByWeek_v9';
-  const SCORE_KEY = 'familyPLScores_v9';
+  const PICK_KEY_NEW = 'familyPLPicksByWeek_v10';
+  const SCORE_KEY = 'familyPLScores_v10';
   const MIGRATED = 'familyPLV9Migrated';
 
   function read(k, fallback){
@@ -416,7 +462,7 @@ if ('serviceWorker' in navigator) {
   }
   function write(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
 
-  // Public helpers for the app to use when v9-aware code is added.
+  // Public helpers for the app to use when v10-aware code is added.
   window.FamilyV9 = {
     getPicks: function(week){
       const all = read(PICK_KEY_NEW, {});
@@ -467,7 +513,7 @@ if ('serviceWorker' in navigator) {
   function enforceBlankNewWeek(){
     // The existing app's own rendering will call its normal storage routines.
     // This guard only clears stale DOM selections when a different gameweek is selected.
-    let lastWeek = sessionStorage.getItem('familyPL_lastWeek_v9');
+    let lastWeek = sessionStorage.getItem('familyPL_lastWeek_v10');
     const sel = document.querySelector('select');
     if(!sel) return;
     const week = sel.value;
@@ -476,7 +522,7 @@ if ('serviceWorker' in navigator) {
         if(el.tagName==='BUTTON') el.classList.remove('selected','active');
       });
     }
-    sessionStorage.setItem('familyPL_lastWeek_v9', week);
+    sessionStorage.setItem('familyPL_lastWeek_v10', week);
   }
   window.addEventListener('load', function(){ setTimeout(enforceBlankNewWeek, 500); });
 })();
