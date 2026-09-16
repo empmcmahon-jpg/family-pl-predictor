@@ -1,12 +1,12 @@
-# Family Premier League Predictor v9
+# Family Premier League Predictor v11
 
-This version is prepared for the existing GitHub Pages repository.
+Upload these files to the existing GitHub Pages repository.
 
-Focus of v9:
-- Separate prediction storage by gameweek.
-- A new gameweek does not inherit the previous game's picks.
-- Historical gameweek score records are stored separately from current picks.
-- Legacy picks are quarantined rather than automatically assigned to a new week.
-- GitHub Pages/PWA files included.
-
-Upload/replace `index.html`, `manifest.webmanifest`, `sw.js`, `icon-192.png`, and `icon-512.png` in the existing repository, then commit.
+v11 fixes:
+- Stable fixture-key storage using UAE date + home team + away team.
+- Migrates v10 and older saved picks without requiring re-entry where fixture identity can be matched.
+- Historical completed gameweek scores are saved and used for the Season leaderboard.
+- Results are only treated as completed when ESPN reports a completed/post/final state, with a cautious historical fallback.
+- Current-day matches remain editable for catch-up.
+- Week 4 picks are isolated from other gameweeks.
+- ESPN remains the result source; TheSportsDB/Sporting Events provide fixture details.

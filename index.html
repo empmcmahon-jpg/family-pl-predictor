@@ -148,14 +148,28 @@ const FIXTURE_API='https://sporting-events.org/data/premier-league.json';
 const ESPN_API='https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard';
 let players=JSON.parse(localStorage.getItem('fpp_players')||'["Eoghan","Zeinab","Hannah","Senan"]');
 let picks=JSON.parse(localStorage.getItem('fpp_picks')||'{}');
-let scopedPicks=JSON.parse(localStorage.getItem('fpp_picks_by_week_v10')||'{}');
-let savedWeekScores=JSON.parse(localStorage.getItem('fpp_week_scores_v10')||'{}');
+let scopedPicks=JSON.parse(localStorage.getItem('fpp_picks_by_week_v11')||'{}');
+let savedWeekScores=JSON.parse(localStorage.getItem('fpp_week_scores_v11')||'{}');
 let events=[],rounds=[],currentRound='';
 const $=s=>document.querySelector(s);
 
-function save(){localStorage.setItem('fpp_players',JSON.stringify(players));localStorage.setItem('fpp_picks',JSON.stringify(picks));localStorage.setItem('fpp_picks_by_week_v10',JSON.stringify(scopedPicks));localStorage.setItem('fpp_week_scores_v10',JSON.stringify(savedWeekScores))}
-function weekPick(id,pi){return scopedPicks[String(currentRound)]?.[id]?.[pi]||''}
-function setWeekPick(week,id,pi,val){const w=String(week);if(!scopedPicks[w])scopedPicks[w]={};if(!scopedPicks[w][id])scopedPicks[w][id]=['','','',''];scopedPicks[w][id][pi]=val;save()}
+function save(){
+  localStorage.setItem('fpp_players',JSON.stringify(players));
+  localStorage.setItem('fpp_picks',JSON.stringify(picks));
+  localStorage.setItem('fpp_picks_by_week_v11',JSON.stringify(scopedPicks));
+  localStorage.setItem('fpp_week_scores_v11',JSON.stringify(savedWeekScores))
+}
+function weekPick(id,pi){
+  const e=events.find(x=>x.idEvent===id);
+  return e ? (scopedPicks[String(roundNum(e))]?.[fixtureKey(e)]?.[pi]||'') : '';
+}
+function setWeekPick(week,id,pi,val){
+  const e=events.find(x=>x.idEvent===id); if(!e)return;
+  const w=String(week),k=fixtureKey(e);
+  if(!scopedPicks[w])scopedPicks[w]={};
+  if(!scopedPicks[w][k])scopedPicks[w][k]=['','','',''];
+  scopedPicks[w][k][pi]=val; save()
+}
 function isCompleted(e){
   if(e.completed===true)return true;
   const st=String(e.strStatus||e.status||'').toLowerCase();
@@ -212,7 +226,7 @@ function badge(e,home){
 function scoreEvents(es){
   const week=String(currentRound);
   return players.map((_,pi)=>es.reduce((sum,e)=>{
-    const actual=resultOf(e), pick=scopedPicks[week]?.[e.idEvent]?.[pi]||'';
+    const actual=resultOf(e), pick=scopedPicks[week]?.[fixtureKey(e)]?.[pi]||'';
     return sum+(actual && pick===actual ? 1:0);
   },0));
 }
@@ -226,8 +240,13 @@ function renderWeekBoard(){
 }
 function renderSeasonBoard(){
   const totals=players.map((_,pi)=>rounds.reduce((sum,r)=>{
+    const saved=savedWeekScores[String(r)];
+    if(saved && Array.isArray(saved.scores)) return sum+(Number(saved.scores[pi])||0);
     const es=events.filter(e=>String(roundNum(e))===String(r));
-    return sum+es.reduce((n,e)=>{const a=resultOf(e),p=scopedPicks[String(r)]?.[e.idEvent]?.[pi]||'';return n+(a&&p===a?1:0)},0);
+    return sum+es.reduce((n,e)=>{
+      const a=resultOf(e),p=scopedPicks[String(r)]?.[fixtureKey(e)]?.[pi]||'';
+      return n+(a&&p===a?1:0)
+    },0);
   },0));
   renderBoard($('#seasonBoard'),totals);
 }
@@ -260,7 +279,7 @@ function matchCard(e){
     <div class="team">${badge(e,false)}<div class="teamname">${esc(e.strAwayTeam)}</div></div>
   </div><div class="predgrid">${players.map((p,pi)=>`<div class="person"><div class="personname">${esc(p)}</div><div class="picks">${pickButton(e,pi,'H')}${pickButton(e,pi,'D')}${pickButton(e,pi,'A')}</div></div>`).join('')}</div></article>`
 }
-function weekPickFor(week,id,pi){return scopedPicks[String(week)]?.[id]?.[pi]||''}
+function weekPickFor(week,id,pi){const e=events.find(x=>x.idEvent===id);return e?scopedPicks[String(week)]?.[fixtureKey(e)]?.[pi]||'':''}
 
 function bindPickButtons(scope=document){
   scope.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{
@@ -353,42 +372,76 @@ function mergeResultIntoFixture(target,source){
   if(source.completed)target.strStatus='FT'
 }
 function migrateOldPicks(baseEvents){
-  // v7 used TheSportsDB ids. Map those picks to the new stable ESPN/supplemental ids where possible.
-  const legacyIds=Object.keys(picks); if(!legacyIds.length)return;
-  const legacyById=new Map(baseEvents.filter(e=>e.idEvent&&String(e.idEvent)).map(e=>[String(e.idEvent),e]));
-  const keyToNew=new Map(events.map(e=>[fixtureKey(e),e.idEvent]));
+  const keyToEvent=new Map(events.map(e=>[fixtureKey(e),e]));
   let changed=false;
-  for(const id of legacyIds){
-    if(id.startsWith('se-')||id.startsWith('espn-'))continue;
-    const old=legacyById.get(id); if(!old)continue;
-    const nid=keyToNew.get(fixtureKey(old));
-    if(nid&&nid!==id&&!picks[nid]){picks[nid]=picks[id];changed=true}
+
+  // Legacy v7/v8 picks keyed by source event ID.
+  for(const id of Object.keys(picks)){
+    const old=baseEvents.find(e=>String(e.idEvent)===String(id));
+    if(!old)continue;
+    const current=keyToEvent.get(fixtureKey(old));
+    if(!current)continue;
+    if(!picks[current.idEvent]){
+      picks[current.idEvent]=Array.isArray(picks[id])?picks[id].slice(0,4):['','','',''];
+      changed=true;
+    }
   }
-  if(changed)save()
-}
-function migratePicksIntoWeeks(){
-  // One-time migration of existing per-fixture picks into gameweek-scoped storage.
-  // This prevents old Week 3 selections from appearing in Week 4.
-  let changed=false;
+
+  // v11 picks were keyed by source event ID. Convert them to stable fixture keys.
+  const oldScoped=JSON.parse(localStorage.getItem('fpp_picks_by_week_v11')||'{}');
+  for(const [week,data] of Object.entries(oldScoped||{})){
+    if(!data || typeof data!=='object')continue;
+    if(!scopedPicks[week])scopedPicks[week]={};
+    for(const [id,val] of Object.entries(data)){
+      const current=events.find(e=>String(e.idEvent)===String(id));
+      if(!current)continue;
+      const k=fixtureKey(current);
+      if(!scopedPicks[week][k] && Array.isArray(val)){
+        scopedPicks[week][k]=val.slice(0,4);
+        changed=true;
+      }
+    }
+  }
+
+  // Finally convert legacy picks directly to the correct gameweek using fixture identity.
   for(const e of events){
     const r=roundNum(e); if(!Number.isFinite(r))continue;
-    const old=picks[e.idEvent]; if(!old)continue;
-    const w=String(r);
+    const legacy=picks[e.idEvent];
+    if(!legacy || !Array.isArray(legacy))continue;
+    const w=String(r),k=fixtureKey(e);
     if(!scopedPicks[w])scopedPicks[w]={};
-    if(!scopedPicks[w][e.idEvent]){scopedPicks[w][e.idEvent]=Array.isArray(old)?old.slice(0,4):['','','',''];changed=true;}
+    if(!scopedPicks[w][k]){
+      scopedPicks[w][k]=legacy.slice(0,4);
+      changed=true;
+    }
+  }
+
+  if(changed)save();
+}
+
+function migratePicksIntoWeeks(){
+  // Reconcile all old/current pick formats against the current fixture list.
+  migrateOldPicks(events);
+
+  // If a v11 week contains a source ID that changed between feeds, resolve it by
+  // matching the stable date + home + away fixture identity.
+  const oldScoped=JSON.parse(localStorage.getItem('fpp_picks_by_week_v11')||'{}');
+  let changed=false;
+  for(const [week,data] of Object.entries(oldScoped||{})){
+    if(!data || typeof data!=='object')continue;
+    if(!scopedPicks[week])scopedPicks[week]={};
+    for(const [id,val] of Object.entries(data)){
+      if(scopedPicks[week] && Object.keys(scopedPicks[week]).some(k=>k===id))continue;
+      const current=events.find(e=>String(e.idEvent)===String(id));
+      if(current && Array.isArray(val)){
+        const k=fixtureKey(current);
+        if(!scopedPicks[week][k]){scopedPicks[week][k]=val.slice(0,4);changed=true;}
+      }
+    }
   }
   if(changed)save();
 }
-function saveCompletedWeekScores(){
-  for(const r of rounds){
-    const es=events.filter(e=>String(roundNum(e))===String(r));
-    const completed=es.filter(isCompleted);
-    if(!completed.length)continue;
-    const scores=players.map((_,pi)=>completed.reduce((n,e)=>{const a=resultOf(e),p=scopedPicks[String(r)]?.[e.idEvent]?.[pi]||'';return n+(a&&p===a?1:0)},0));
-    savedWeekScores[String(r)]={scores,savedAt:new Date().toISOString(),completed:completed.length,total:es.length};
-  }
-  save();
-}
+
 async function load(){
   $('#status').textContent='Refreshing fixtures, results and family scores…';
   try{
@@ -420,12 +473,55 @@ async function load(){
   }
 }
 function assignSyntheticRounds(all){
-  const real=all.filter(e=>Number.isFinite(roundNum(e))&&startTime(e)),supp=all.filter(e=>!Number.isFinite(roundNum(e))&&startTime(e));
-  for(const e of supp){const t=startTime(e).getTime();let best=null,dist=Infinity;for(const r of real){const dd=Math.abs(startTime(r).getTime()-t);if(dd<dist){dist=dd;best=r}}if(best&&dist<=4*24*60*60*1000)e.intRound=String(roundNum(best))}
-  const unassigned=supp.filter(e=>!Number.isFinite(roundNum(e))).sort((a,b)=>startTime(a)-startTime(b));
-  let nextRound=(Math.max(0,...real.map(roundNum).filter(Number.isFinite))+1)||1,clusterStart=null,clusterRound=nextRound;
-  for(const e of unassigned){const t=startTime(e).getTime();if(clusterStart===null||t-clusterStart>4*24*60*60*1000){clusterStart=t;clusterRound=nextRound++}e.intRound=String(clusterRound)}
+  const withTime=all.filter(e=>startTime(e));
+  const explicit=withTime.filter(e=>Number.isFinite(parseInt(e.intRound??e.strRound??'',10)));
+  const explicitRounds=new Set(explicit.map(e=>parseInt(e.intRound??e.strRound,10)));
+
+  // Keep reliable explicit rounds. For everything else, assign by chronological
+  // matchweek clusters. A gap > 4 days starts a new Premier League gameweek.
+  const unassigned=withTime.filter(e=>!Number.isFinite(parseInt(e.intRound??e.strRound??'',10)))
+    .sort((a,b)=>startTime(a)-startTime(b));
+
+  let next=explicitRounds.size ? Math.max(...explicitRounds)+1 : 1;
+  let cluster=[];
+  let clusterStart=null;
+
+  for(const e of unassigned){
+    const t=startTime(e).getTime();
+    if(clusterStart===null || t-clusterStart>4*24*60*60*1000){
+      if(cluster.length){
+        const nearestExplicit=explicit.find(x=>{
+          const d=Math.abs(startTime(x).getTime()-startTime(cluster[0]).getTime());
+          return d<=4*24*60*60*1000;
+        });
+        const r=nearestExplicit ? parseInt(nearestExplicit.intRound??nearestExplicit.strRound,10) : next++;
+        cluster.forEach(x=>x.intRound=String(r));
+      }
+      cluster=[e];
+      clusterStart=t;
+    } else {
+      cluster.push(e);
+    }
+  }
+  if(cluster.length){
+    const nearestExplicit=explicit.find(x=>{
+      const d=Math.abs(startTime(x).getTime()-startTime(cluster[0]).getTime());
+      return d<=4*24*60*60*1000;
+    });
+    const r=nearestExplicit ? parseInt(nearestExplicit.intRound??nearestExplicit.strRound,10) : next++;
+    cluster.forEach(x=>x.intRound=String(r));
+  }
+
+  // If an explicit round and a supplemental fixture share the same fixture week,
+  // normalize to the explicit round.
+  for(const e of all){
+    const r=parseInt(e.intRound??e.strRound??'',10);
+    if(!Number.isFinite(r))continue;
+    const near=explicit.find(x=>fixtureKey(x)===fixtureKey(e));
+    if(near)e.intRound=String(parseInt(near.intRound??near.strRound,10));
+  }
 }
+
 $('#refresh').addEventListener('click',load);
 $('#round').addEventListener('change',e=>{currentRound=e.target.value;renderControls();renderMatches();renderWeekBoard()});
 $('#prev').addEventListener('click',()=>{const i=rounds.indexOf(+currentRound);if(i>0){currentRound=String(rounds[i-1]);renderControls();renderMatches();renderWeekBoard()}});
@@ -449,11 +545,11 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 
-<script id="family-v10-storage-fix">
+<script id="family-v11-storage-fix">
 (function(){
   const PICK_KEY_OLD = 'plpicks';
-  const PICK_KEY_NEW = 'familyPLPicksByWeek_v10';
-  const SCORE_KEY = 'familyPLScores_v10';
+  const PICK_KEY_NEW = 'familyPLPicksByWeek_v11';
+  const SCORE_KEY = 'familyPLScores_v11';
   const MIGRATED = 'familyPLV9Migrated';
 
   function read(k, fallback){
@@ -462,7 +558,7 @@ if ('serviceWorker' in navigator) {
   }
   function write(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
 
-  // Public helpers for the app to use when v10-aware code is added.
+  // Public helpers for the app to use when v11-aware code is added.
   window.FamilyV9 = {
     getPicks: function(week){
       const all = read(PICK_KEY_NEW, {});
@@ -513,7 +609,7 @@ if ('serviceWorker' in navigator) {
   function enforceBlankNewWeek(){
     // The existing app's own rendering will call its normal storage routines.
     // This guard only clears stale DOM selections when a different gameweek is selected.
-    let lastWeek = sessionStorage.getItem('familyPL_lastWeek_v10');
+    let lastWeek = sessionStorage.getItem('familyPL_lastWeek_v11');
     const sel = document.querySelector('select');
     if(!sel) return;
     const week = sel.value;
@@ -522,7 +618,7 @@ if ('serviceWorker' in navigator) {
         if(el.tagName==='BUTTON') el.classList.remove('selected','active');
       });
     }
-    sessionStorage.setItem('familyPL_lastWeek_v10', week);
+    sessionStorage.setItem('familyPL_lastWeek_v11', week);
   }
   window.addEventListener('load', function(){ setTimeout(enforceBlankNewWeek, 500); });
 })();
