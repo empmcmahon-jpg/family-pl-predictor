@@ -1,12 +1,11 @@
-# Family Premier League Predictor v11
+# Family Premier League Predictor v12
 
-Upload these files to the existing GitHub Pages repository.
+v12 fixes the gameweek assignment problem in v11.
 
-v11 fixes:
-- Stable fixture-key storage using UAE date + home team + away team.
-- Migrates v10 and older saved picks without requiring re-entry where fixture identity can be matched.
-- Historical completed gameweek scores are saved and used for the Season leaderboard.
-- Results are only treated as completed when ESPN reports a completed/post/final state, with a cautious historical fallback.
-- Current-day matches remain editable for catch-up.
-- Week 4 picks are isolated from other gameweeks.
-- ESPN remains the result source; TheSportsDB/Sporting Events provide fixture details.
+- Uses the official 2026/27 Premier League fixture calendar to assign Gameweeks 1–38.
+- Separates GW4 (Sep 12–14) from GW5 (Sep 18–20), which v11 incorrectly merged because they were exactly four days apart.
+- Repairs/migrates v10/v11 picks using stable fixture identity.
+- Recalculates completed historical week scores from the actual saved picks + confirmed results.
+- Season totals use the repaired completed-week snapshots.
+- ESPN remains the results source.
+- Do not clear browser storage when upgrading.
